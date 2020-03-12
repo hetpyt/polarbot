@@ -37,21 +37,23 @@ class Carriage:
     
     def calc_position(self, left_len, right_len):
         print('llen={}, rlen={}'.format(left_len, right_len))
-        f_lx = (left_len * left_len - right_len * right_len + self.width * self.width) / (2 * self.width)
-        f_rx = (right_len * right_len - left_len * left_len + self.width * self.width) / (2 * self.width)
-        ly = round(sqrt(left_len * left_len - f_lx * f_lx))
-        ry = round(sqrt(right_len * right_len - f_rx * f_rx))
-        # draw calcutated attpoints
-        self.canvas.cross(round(f_lx), ly, 10, fill = 'green')
-        self.canvas.cross(round(f_rx), ry, 10, fill = 'yellow')
         
+        f_lx = (left_len ** 2 - right_len ** 2 + (self.canvas.width - self.width) ** 2) / (2 * (self.canvas.width - self.width))
+        ly = round(sqrt(left_len ** 2 - f_lx ** 2))
+        # draw calcutated attpoints
+        self.canvas.delete('calc_attpoint')
+        self.canvas.cross(round(f_lx), ly, 10, tag = 'calc_attpoint', fill = 'green')
+        #self.canvas.cross(round(f_rx), ry, 10, fill = 'yellow')
+        
+    def calc_attpoint(self, x, y, left):
+        if left:
+            return (x - self.half_width, y - self.half_height)
+        else:
+            return (x + self.half_width, y - self.half_height)
         
     def get_attpoint(self, left):
-        if left:
-            return (self.pen_x - self.half_width, self.pen_y - self.half_height)
-        else:
-            return (self.pen_x + self.half_width, self.pen_y - self.half_height)
-    
+        return self.calc_attpoint(self.pen_x, self.pen_y, left)
+        
     def get_position(self):
         return (self.pen_x, self.pen_y)
 
@@ -81,11 +83,10 @@ class Rope:
         self.redraw()
         
     def calc_length(self, dest_x, dest_y):
-        if self.is_left:
-            cat_x = dest_x   
-        else:
-            cat_x = self.bound_x - dest_x
-        self.length = round(sqrt(cat_x * cat_x + dest_y * dest_y))  
+        px, py = self.carriage.calc_attpoint(dest_x, dest_y, self.is_left)
+        if not self.is_left:
+            px = self.bound_x - px
+        self.length = round(sqrt( px ** 2 + py ** 2))  
         return self.length
     
     def set_length(self, len):
@@ -139,6 +140,8 @@ class PolarBot(TK.Canvas):
         self.create_text(self.width // 2, 10, tag = self.stats_tag, text = 'x,y={}'.format(self.carriage.get_position()))
     
     def move_to(self, x, y):
+        self.cur_x = x
+        self.cur_y = y
         self.carriage.calc_position(self.left_rope.calc_length(x, y), self.right_rope.calc_length(x, y))
         self.carriage.move_to(x, y)
         self.left_rope.move_to()
@@ -155,9 +158,10 @@ class PolarBot(TK.Canvas):
         #print('<-- tick()')
 
 class ControlPanel(TK.Frame):
-    def __init__(self, parent, width, height):
+    def __init__(self, parent, bot, width, height):
         super().__init__(parent) #, width = self.canvas_width, height = self.canvas_height)
         self.parent = parent
+        self.bot = bot
         self.width = width
         self.height = height
         self.configure(width = self.width, height = self.height)
@@ -165,15 +169,23 @@ class ControlPanel(TK.Frame):
         # create controls
         self.lb_x = TK.Label(self, text = 'GO X')
         self.lb_x.grid(row = 1, column = 1)
-        self.ed_x = TK.Text(self, width = 5, height = 1)
+        self.ed_x = TK.Entry(self, width = 5)
         self.ed_x.grid(row = 1, column = 2)
         self.lb_y = TK.Label(self, text = 'Y')
         self.lb_y.grid(row = 1, column = 3)
-        self.ed_y = TK.Text(self, width = 5, height = 1)
+        self.ed_y = TK.Entry(self, width = 5)
         self.ed_y.grid(row = 1, column = 4)
+        
+        self.ed_y.bind('<Key>', self.on_key_enter)
+        self.ed_x.bind('<Key>', self.on_key_enter)
+
+    def on_key_enter(self, event):
+        print(event)
+        if event.keycode == 13:
+            self.bot.move_to(int(self.ed_x.get()), int(self.ed_y.get()))
         
 if __name__ == '__main__':
     root = TK.Tk()
-    cp = ControlPanel(root, WIDTH, 50)
     bot = PolarBot(root, WIDTH, HEIGHT)
+    cp = ControlPanel(root, bot, WIDTH, 50)
     root.mainloop()
