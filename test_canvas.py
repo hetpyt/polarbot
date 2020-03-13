@@ -8,99 +8,108 @@ import tkinter as TK
 from tkinter.messagebox import showinfo, showerror, showwarning
 from math import sqrt
 
-class Carriage:
-    def __init__(self, canvas):
-        self.color = 'blue'
-        self.width = 80
-        self.height = 60
-        self.half_width = self.width // 2
-        self.half_height = self.height // 2
-        self.pen_x = canvas.width // 2
-        self.pen_y = canvas.height // 2
-        self.canvas = canvas
-        self.tag = 'carriage'
-        # bounds
-        canvas.rect(self.pen_x - self.half_width, self.pen_y - self.half_height, self.pen_x + self.half_width, self.pen_y + self.half_height, outline = self.color, tag = self.tag)
-        # aim
-        canvas.rect(self.pen_x - 1, self.pen_y - 1, self.pen_x + 1, self.pen_y + 1, outline = self.color, tag = self.tag)
-        
-    def update(self):
-        pass
+class Point:
+    def __init__(self, x, y):
+        self.set(x, y)
     
-    def move(self, dx, dy):
-        self.pen_x += dx
-        self.pen_y += dy
-        self.canvas.move(self.tag, dx, dy)
-    
-    def move_to(self, x, y):
-        self.move(x - self.pen_x, y - self.pen_y)
-    
-    def calc_position(self, left_len, right_len):
-        print('llen={}, rlen={}'.format(left_len, right_len))
-        
-        f_lx = (left_len ** 2 - right_len ** 2 + (self.canvas.width - self.width) ** 2) / (2 * (self.canvas.width - self.width))
-        ly = round(sqrt(left_len ** 2 - f_lx ** 2))
-        # draw calcutated attpoints
-        self.canvas.delete('calc_attpoint')
-        self.canvas.cross(round(f_lx), ly, 10, tag = 'calc_attpoint', fill = 'green')
-        #self.canvas.cross(round(f_rx), ry, 10, fill = 'yellow')
-        
-    def calc_attpoint(self, x, y, left):
-        if left:
-            return (x - self.half_width, y - self.half_height)
+    def __getattr__(self, name):
+        if name.upper() == 'X':
+            return self._x
+        elif name.upper() == 'Y':
+            return self._y
         else:
-            return (x + self.half_width, y - self.half_height)
-        
-    def get_attpoint(self, left):
-        return self.calc_attpoint(self.pen_x, self.pen_y, left)
-        
-    def get_position(self):
-        return (self.pen_x, self.pen_y)
+            raise AttributeError('property "{}" not defined'.format(name))
+            
+    def __setattr__(self, name, val):
+        if name.upper() == 'X':
+            self._x = val
+        elif name.upper() == 'Y':
+            self._y = val
+        else:
+            raise AttributeError('property "{}" not defined'.format(name))
+            
+    def __str__(self):
+        return '({},{})'.format(self._x, self._y)
+    
+    def set(self, x, y):
+        self.__dict__['_x'] = x
+        self.__dict__['_y'] = y
+ 
 
-class Rope:
-    def __init__(self, canvas, is_left):
-        self.is_left = is_left
-        self.tag = 'left_rope' if is_left else 'right_rope'
+class Carriage:
+    def __init__(self, canvas, width, height, tag = 'carriage'):
         self.canvas = canvas
-        self.carriage = canvas.get_carriage()
-        self.bound_x = 0 if is_left else canvas.width
-        self.bound_y = 0 
-        self.end_x, self.end_y = self.carriage.get_attpoint(is_left)
-        self.redraw()
-
+        self.width = width
+        self.height = height
+        self.tag = tag
+        self.half_width = self.width / 2
+        self.half_height = self.height / 2
+        # ropes bound points
+        self.left_bound_x = 0.0
+        self.right_bound_x = float(self.canvas.width)
+        # ropes attachment points
+        self.left_attpoint = Point(0.0, 0.0)
+        self.right_attpoint = Point(0.0, 0.0)
+        # ropes lengths
+        self.left_rope = 0.0
+        self.right_rope = 0.0
+        # calculated pen position
+        self.pen_pos = Point(0.0, 0.0)
+        
+        self.calc_position(canvas.width / 2, canvas.height / 2)
+        
     def redraw(self):
         self.canvas.delete(self.tag)
-        self.canvas.line(self.bound_x, self.bound_y, self.end_x, self.end_y, tag = self.tag, fill = 'red')
+        # bounds
+        self.canvas.rect(round(self.pen_pos.x - self.half_width), round(self.pen_pos.y - self.half_height), round(self.pen_pos.x + self.half_width), round(self.pen_pos.y + self.half_height), outline = 'blue', tag = self.tag)
+        # aim
+        self.canvas.rect(round(self.pen_pos.x - 1), round(self.pen_pos.y - 1), round(self.pen_pos.x + 1), round(self.pen_pos.y + 1), outline = 'blue', tag = self.tag)
+        # left rope
+        self.canvas.line(round(self.left_bound_x), 0, round(self.left_attpoint.x), round(self.left_attpoint.y), tag = self.tag, fill = 'red')
+        # right rope
+        self.canvas.line(round(self.right_bound_x), 0, round(self.right_attpoint.x), round(self.right_attpoint.y), tag = self.tag, fill = 'red')
+        #self.canvas.cross(round(f_lx), round(f_y), 10, tag = 'calc_attpoint', fill = 'green')
+        #self.canvas.cross(round(f_rx), round(f_y), 10, tag = 'calc_attpoint', fill = 'green')
     
-    def move(self, dx, dy):
-        self.end_x += dx
-        self.end_y += dy
-        self.redraw()
-        
-    def move_to(self):
-        #self.move(x - self.end_x, y - self.end_y)
-        self.end_x, self.end_y = self.carriage.get_attpoint(self.is_left)
-        self.redraw()
-        
-    def calc_length(self, dest_x, dest_y):
-        px, py = self.carriage.calc_attpoint(dest_x, dest_y, self.is_left)
-        if not self.is_left:
-            px = self.bound_x - px
-        self.length = round(sqrt( px ** 2 + py ** 2))  
-        return self.length
+    def attpoint_from_pos(self, x, y, left):
+        if left:
+            return Point(x - self.half_width, y - self.half_height)
+        else:
+            return Point(x + self.half_width, y - self.half_height)
     
-    def set_length(self, len):
-        pass
-        
-    def get_length(self):
-        pass
+    def calc_position(self, target_x, target_y):
+        #print('llen={}, rlen={}'.format(left_len, right_len))
+        # calc length of left rope
+        attp = self.attpoint_from_pos(target_x, target_y, True)
+        f_llen = sqrt((attp.x - self.left_bound_x) ** 2 + attp.y ** 2)
+        del(attp)
+        # calc length of right rope
+        attp = self.attpoint_from_pos(target_x, target_y, False)
+        f_rlen = sqrt((self.right_bound_x - attp.x) ** 2 + attp.y ** 2)
+        del(attp)
+        # calc coordinates of carriage attachment poins
+        f_lx = (f_llen ** 2 - f_rlen ** 2 + (self.canvas.width - self.width) ** 2) / (2 * (self.canvas.width - self.width))
+        f_y = sqrt(f_llen ** 2 - f_lx ** 2)
+        f_rx = float(self.canvas.width) - sqrt(f_rlen ** 2 - f_y ** 2)
+        #print('w={}'.format(f_rx - f_lx))
+        self.left_attpoint.set(f_lx, f_y)
+        self.right_attpoint.set(f_rx, f_y)
+        # calc pen position
+        self.pen_pos.set(f_lx + (f_rx - f_lx) / 2, f_y + self.half_height)
+        # redraw
+        self.redraw()
+    
+    def get_position(self, precision = None):
+        if precision == None:
+            return (self.pen_pos.x, self.pen_pos.y) 
+        else:
+            return (round(self.pen_pos.x, precision), round(self.pen_pos.y, precision))
 
 class PolarBot(TK.Canvas):
     def __init__(self, parent, width, height):
         self.stats_tag = 'stats'
         self.interval_ms = 1000
-        self.cur_x = 0
-        self.cur_y = 0
+
         super().__init__(parent) #, width = self.canvas_width, height = self.canvas_height)
         self.parent = parent
         self.width = width
@@ -112,14 +121,9 @@ class PolarBot(TK.Canvas):
         #self.line(0, 0, 10, 0, fill = "black", tag = 'test_line')    
         self.after(self.interval_ms, self.tick)
         # создаем объект каретки робота
-        self.carriage = Carriage(self)
-        self.left_rope = Rope(self, True)
-        self.right_rope = Rope(self, False)
-    
+        self.carriage = Carriage(self, self.width // 10, self.height // 10, 'carriage')
         self.cur_x, self.cur_y = self.carriage.get_position()
-        
-    def get_carriage(self):
-        return self.carriage
+
     
     def line(self, x0, y0, x1, y1, **kwargs):
         #print('({},{})-({},{})'.format(x0, y0, x1, y1))
@@ -135,24 +139,17 @@ class PolarBot(TK.Canvas):
         self.create_line(x, y - size // 2, x, y + size // 2, kwargs)
     
     def update(self):
+        self.carriage.calc_position(self.cur_x, self.cur_y)
         # update stats
         self.delete(self.stats_tag)
-        self.create_text(self.width // 2, 10, tag = self.stats_tag, text = 'x,y={}'.format(self.carriage.get_position()))
+        self.create_text(self.width // 2, 10, tag = self.stats_tag, text = 'target x,y={}'.format((self.cur_x, self.cur_y)))
+        self.create_text(self.width // 2, 20, tag = self.stats_tag, text = 'calc x,y={}'.format(self.carriage.get_position()), justify = TK.LEFT)
     
-    def move_to(self, x, y):
-        self.cur_x = x
-        self.cur_y = y
-        self.carriage.calc_position(self.left_rope.calc_length(x, y), self.right_rope.calc_length(x, y))
-        self.carriage.move_to(x, y)
-        self.left_rope.move_to()
-        self.right_rope.move_to()
-        
     def tick(self):
         #print('--> tick()')
         self.cur_x += 1
         self.cur_y += 1
         #self.line(self.cur_x, self.cur_y, self.cur_x, self.cur_y + 10)
-        self.move_to(self.cur_x, self.cur_y)
         self.update()
         self.after(self.interval_ms, self.tick)
         #print('<-- tick()')
@@ -180,7 +177,7 @@ class ControlPanel(TK.Frame):
         self.ed_x.bind('<Key>', self.on_key_enter)
 
     def on_key_enter(self, event):
-        print(event)
+        #print(event)
         if event.keycode == 13:
             self.bot.move_to(int(self.ed_x.get()), int(self.ed_y.get()))
         
