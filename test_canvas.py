@@ -77,7 +77,6 @@ class Command:
                     elif pref == 'F':
                         self._arg_speed = amount
     
-
 class Carriage:
     def __init__(self, canvas, width, height, tag = 'carriage'):
         self.canvas = canvas
@@ -147,7 +146,7 @@ class Carriage:
         else:
             return (round(self.pen_pos.x, precision), round(self.pen_pos.y, precision))
 
-class PolarBot(TK.Canvas):
+class Visualiser(TK.Canvas):
     def __init__(self, parent, width, height):
         self.stats_tag = 'stats'
         self.interval_ms = 1000
@@ -200,12 +199,26 @@ class PolarBot(TK.Canvas):
         self.after(self.interval_ms, self.tick)
         #print('<-- tick()')
 
-class Controler:
-    def __init__(self, bot):
-        self.bot = bot
+class PolarBot:
+    def __init__(self):
+        self._executor = []
         # 
         self.position = Point(0.0, 0.0)
         self.curent_cmd = None
+
+    def add_executor(self, ex):
+        self._executor.append(ex)
+        
+    def rem_executor(self, ex):
+        if ex in self._executor:
+            del(self._executor[self._executor.index(ex)])
+            
+    def load_program(self, data):
+        pass
+        
+    def execute(self):
+        pass
+        
 
 class ControlPanel(TK.Frame):
     def __init__(self, parent, bot):
@@ -241,7 +254,7 @@ class ControlPanel(TK.Frame):
         
 if __name__ == '__main__':
     root = TK.Tk()
-    bot = PolarBot(root, WIDTH, HEIGHT)
+    bot = Visualiser(root, WIDTH, HEIGHT)
     cp = ControlPanel(root, bot)
     bot.grid(row = 1, column = 1)
     cp.grid(row = 1, column = 2, sticky = TK.W + TK.E + TK.N + TK.S)
