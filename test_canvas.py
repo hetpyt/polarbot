@@ -35,6 +35,48 @@ class Point:
         self.__dict__['_x'] = x
         self.__dict__['_y'] = y
  
+class Command:
+    self.CMD_SEP = ' ' 
+    self.SUPPORTED_CMD = ('G0, G1')
+    def __init__(self, cmd_text = None):
+        self._cmd = None
+        self._arg_x = None
+        self._arg_y = None
+        self._arg_speed = None
+    
+        if not cmd_text == None:
+            self.parse(cmd_text)
+            
+    def check(self):
+        return True
+    
+    def parse(self, cmd_text):
+        # <CMD> [X<val>] [Y<val>] [F<val>]
+        items = cmd_text.strip().upper().split(Command.CMD_SEP, 1)
+        if len(items) == 0:
+            # empty string
+            raise Exception('can not parse "{}", command is empty'.format(cmd_text))
+        elif len(items) == 1
+            # no args
+            self._cmd = items[0].strip()
+        else:
+            self._cmd = items[0].strip()
+            # parse args
+            for item in items[1].strip().split(Command.CMD_SEP):
+                t = item.strip()
+                if t:
+                    pref = t[0]
+                    try:
+                        amount = float(t[1:])
+                    except Exception as e:
+                        raise Exception('can not parse "{}", argument "{}" is invalid'.format(cmd_text, t))
+                    if pref == 'X':
+                        self._arg_x = amount
+                    elif pref == 'Y':
+                        self._arg_y = amount
+                    elif pref == 'F':
+                        self._arg_speed = amount
+    
 
 class Carriage:
     def __init__(self, canvas, width, height, tag = 'carriage'):
@@ -115,7 +157,7 @@ class PolarBot(TK.Canvas):
         self.width = width
         self.height = height
         self.configure(width = self.width, height = self.height, background = "white", borderwidth = 0)
-        self.pack() #ipadx = 10, ipady = 10)
+        #self.pack() #ipadx = 10, ipady = 10)
         #self.place(x = 10, y = 10)
         #self.create_rectangle(2, 2, self.width, self.width, outline = "black", fill = "white")
         #self.line(0, 0, 10, 0, fill = "black", tag = 'test_line')    
@@ -145,6 +187,10 @@ class PolarBot(TK.Canvas):
         self.create_text(self.width // 2, 10, tag = self.stats_tag, text = 'target x,y={}'.format((self.cur_x, self.cur_y)))
         self.create_text(self.width // 2, 20, tag = self.stats_tag, text = 'calc x,y={}'.format(self.carriage.get_position()), justify = TK.LEFT)
     
+    def move_to(self, x, y):
+        self.cur_x, self.cur_y = x, y
+        self.update()
+    
     def tick(self):
         #print('--> tick()')
         self.cur_x += 1
@@ -154,25 +200,37 @@ class PolarBot(TK.Canvas):
         self.after(self.interval_ms, self.tick)
         #print('<-- tick()')
 
+class Controler:
+    def __init__(self, bot):
+        self.bot = bot
+        # 
+        self.position = Point(0.0, 0.0)
+        self.curent_cmd = None
+
 class ControlPanel(TK.Frame):
-    def __init__(self, parent, bot, width, height):
+    def __init__(self, parent, bot):
         super().__init__(parent) #, width = self.canvas_width, height = self.canvas_height)
         self.parent = parent
         self.bot = bot
-        self.width = width
-        self.height = height
-        self.configure(width = self.width, height = self.height)
-        self.pack() #ipadx = 10, ipady = 10)
+        # self.width = width
+        # self.height = height
+        #self.configure(width = self.width, height = self.height)
+        #self.pack() #ipadx = 10, ipady = 10)
         # create controls
-        self.lb_x = TK.Label(self, text = 'GO X')
-        self.lb_x.grid(row = 1, column = 1)
+        self.lb_x = TK.Label(self, text = 'GO TO X')
+        self.lb_x.grid(row = 0, column = 0)
         self.ed_x = TK.Entry(self, width = 5)
-        self.ed_x.grid(row = 1, column = 2)
+        self.ed_x.grid(row = 0, column = 1)
         self.lb_y = TK.Label(self, text = 'Y')
-        self.lb_y.grid(row = 1, column = 3)
+        self.lb_y.grid(row = 0, column = 2)
         self.ed_y = TK.Entry(self, width = 5)
-        self.ed_y.grid(row = 1, column = 4)
-        
+        self.ed_y.grid(row = 0, column = 3)
+        # text fields
+        self.txt_prog = TK.Text(self, width = 20)
+        self.txt_prog.grid(columnspan = 4, sticky = TK.W + TK.E + TK.N + TK.S)
+        # buttond
+        self.btn_run = TK.Button(self, text = 'RUN')
+        self.btn_run.grid(columnspan = 4, sticky = TK.W + TK.E + TK.N + TK.S)
         self.ed_y.bind('<Key>', self.on_key_enter)
         self.ed_x.bind('<Key>', self.on_key_enter)
 
@@ -184,5 +242,7 @@ class ControlPanel(TK.Frame):
 if __name__ == '__main__':
     root = TK.Tk()
     bot = PolarBot(root, WIDTH, HEIGHT)
-    cp = ControlPanel(root, bot, WIDTH, 50)
+    cp = ControlPanel(root, bot)
+    bot.grid(row = 1, column = 1)
+    cp.grid(row = 1, column = 2, sticky = TK.W + TK.E + TK.N + TK.S)
     root.mainloop()
