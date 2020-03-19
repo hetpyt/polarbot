@@ -16,9 +16,11 @@ class Point:
         if name in self.__dict__:
             return self.__dict__[name]
         elif name.upper() == 'X':
-            return self._x
+            return self.__dict__['_x']
         elif name.upper() == 'Y':
-            return self._y
+            return self.__dict__['_y']
+        elif name.upper() == 'XY':
+            return (self.__dict__['_x'], self.__dict__['_y'])
         else:
             raise AttributeError('property "{}" not defined'.format(name))
             
@@ -37,6 +39,9 @@ class Point:
         self.__dict__['_x'] = x
         self.__dict__['_y'] = y
  
+    def copy(self):
+        return Point(self.x, self.y)
+        
 class Command:
     CMD_SEP = ' ' 
     SUPPORTED_CMD = ('G0, G1')
@@ -47,28 +52,30 @@ class Command:
         self._arg_y = kwargs.get('y', None)
         self._arg_speed = kwargs.get('f', None)
     
-        if not cmd_text == None:
-            self.parse(cmd_text)
+        if not self._cmd_text == None:
+            self.parse()
             
     def __getattr__(self, name):
         if name in self.__dict__:
             return self.__dict__[name]
         elif name.upper() == 'X':
-            return self.__dict__._x
+            return self.__dict__['_arg_x']
         elif name.upper() == 'Y':
-            return self.__dict__._y
+            return self.__dict__['_arg_y']
         elif name.upper() == 'P':
-            return Point(self.__dict__._x, self.__dict__._y)
+            #print(self.__dict__)
+            return Point(self.__dict__['_arg_x'], self.__dict__['_arg_y'])
         elif name.upper() == 'F':
-            return self.__dict__._arg_speed
+            return self.__dict__['_arg_speed']
         else:
             raise AttributeError('property "{}" not defined'.format(name))
         
     def check(self):
         return True
     
-    def parse(self, cmd_text):
+    def parse(self):
         # <CMD> [X<val>] [Y<val>] [F<val>]
+        cmd_text = self._cmd_text
         items = cmd_text.strip().upper().split(Command.CMD_SEP, 1)
         if len(items) == 0:
             # empty string
@@ -93,141 +100,22 @@ class Command:
                         self._arg_y = amount
                     elif pref == 'F':
                         self._arg_speed = amount
-    
-class Carriage:
-    def __init__(self, width, height, left_bound_x, right_bound_x):
-        self.width = width
-        self.height = height
-        self.half_width = self.width / 2
-        self.half_height = self.height / 2
-        # ropes bound points
-        self.left_bound_x = left_bound_x
-        self.right_bound_x = right_bound_x
-        # ropes attachment points
-        self.left_attpoint = Point(0.0, 0.0)
-        self.right_attpoint = Point(0.0, 0.0)
-        # ropes lengths
-        self.left_rope = 0.0
-        self.right_rope = 0.0
-        # calculated pen position
-        self.pen_pos = Point(0.0, 0.0)
-        
-        self.calc_position(canvas.width / 2, canvas.height / 2)
-        
-    def attpoint_from_pos(self, x, y, left):
-        if left:
-            return Point(x - self.half_width, y - self.half_height)
-        else:
-            return Point(x + self.half_width, y - self.half_height)
-    
-    def calc_position(self, target_x, target_y):
-        #print('llen={}, rlen={}'.format(left_len, right_len))
-        # calc length of left rope
-        attp = self.attpoint_from_pos(target_x, target_y, True)
-        f_llen = sqrt((attp.x - self.left_bound_x) ** 2 + attp.y ** 2)
-        del(attp)
-        # calc length of right rope
-        attp = self.attpoint_from_pos(target_x, target_y, False)
-        f_rlen = sqrt((self.right_bound_x - attp.x) ** 2 + attp.y ** 2)
-        del(attp)
-        # calc coordinates of carriage attachment poins
-        f_lx = (f_llen ** 2 - f_rlen ** 2 + (self.canvas.width - self.width) ** 2) / (2 * (self.canvas.width - self.width))
-        f_y = sqrt(f_llen ** 2 - f_lx ** 2)
-        f_rx = float(self.canvas.width) - sqrt(f_rlen ** 2 - f_y ** 2)
-        #print('w={}'.format(f_rx - f_lx))
-        self.left_attpoint.set(f_lx, f_y)
-        self.right_attpoint.set(f_rx, f_y)
-        # calc pen position
-        self.pen_pos.set(f_lx + (f_rx - f_lx) / 2, f_y + self.half_height)
-        # redraw
-        self.redraw()
-    
-    def get_position(self, precision = None):
-        if precision == None:
-            return (self.pen_pos.x, self.pen_pos.y) 
-        else:
-            return (round(self.pen_pos.x, precision), round(self.pen_pos.y, precision))
 
-class Visualiser(TK.Canvas):
-    def __init__(self, parent, width, height):
-        self.tag = 'stats'
-
-        super().__init__(parent) #, width = self.canvas_width, height = self.canvas_height)
-        self.parent = parent
-        self.width = width
-        self.height = height
-        self.bot_width = width
-        self.bot_height = height
-        self.x_scale = 1.0
-        self.y_scale = 1.0
-        
-        self.configure(width = self.width, height = self.height, background = "white", borderwidth = 0)
-
-    def init(self, width, height, att_dist, offset_y):
-        # called by controler when object of this class added to controler's executioners list
-        self.bot_width = width
-        self.bot_height = height
-        # distance
-        self.bot_att_dist = att_dist
-        self.bot_offset_y = offset_y
-        # scale
-        self.x_scale = self.width / self.bot_width
-        self.y_scale = self.height / self.bot_height
-        #print(self.scale_x , self.scale_y)
-    
-    def line(self, x0, y0, x1, y1, **kwargs):
-        #print('({},{})-({},{})'.format(x0, y0, x1, y1))
-        self.create_line(x0, y0, x1, y1, kwargs)
-    
-    def rect(self, x0, y0, x1, y1, **kwargs):
-        self.create_rectangle(x0, y0, x1, y1, kwargs)
-    
-    def cross(self, x, y, size, **kwargs):
-        # hor line
-        self.create_line(x - size // 2, y, x + size // 2, y, kwargs)
-        # vert line
-        self.create_line(x, y - size // 2, x, y + size // 2, kwargs)
-    
-    def scale_x(self, v):
-        return round(v * self.x_scale)
-        
-    def scale_y(self, v):
-        return round(v * self.y_scale)
-    
-    def update(self, left_len, right_len):
-        # calc coordinates of carriage attachment poins
-        #print(left_len, right_len)
-        f_w = self.bot_width - self.bot_att_dist
-        f_lx = (left_len ** 2 - right_len ** 2 + f_w ** 2) / (2 * f_w)
-        f_y = sqrt(left_len ** 2 - f_lx ** 2)
-        f_rx = self.bot_width - sqrt(right_len ** 2 - f_y ** 2)
-        # calc tool position
-        f_tx = f_lx + (f_rx - f_lx) / 2
-        f_ty = f_y + self.bot_offset_y
-        # redraw
-        self.delete(self.tag)
-        # aim
-        self.rect(self.scale_x(f_tx) - 1, self.scale_y(f_ty) - 1, self.scale_x(f_tx) + 1, self.scale_y(f_ty) + 1, outline = 'blue', tag = self.tag)
-        # left rope
-        self.line(0, 0, self.scale_x(f_lx), self.scale_y(f_y), tag = self.tag, fill = 'red')
-        # right rope
-        self.line(round(self.width), 0, self.scale_x(f_rx), self.scale_y(f_y), tag = self.tag, fill = 'red')
-        # update stats
-        self.create_text(self.width // 2, 10, tag = self.tag, text = 'target x,y={}'.format((f_tx, f_ty)))
-    
-    def set_pen(self, state = True):
-        self._enable_pen = state
-      
 class PolarBot:
     DEFAULT_SPEED = 100
+    STEPS_PER_MM = 200
     
     def __init__(self, controler, **kwargs):
         self._executor = []
-        self._controler = controler
+        #self._controler = controler
         self.area_width = kwargs.get('width', 800)
         self.area_height = kwargs.get('height', 600) 
         # position of robot's tool (pen)
         self.tool_position = Point(self.area_width / 2, self.area_height / 2)
+        # target tool position
+        self.tg_tool_position = self.tool_position.copy()
+        # source tool position
+        self.sc_tool_position = self.tool_position.copy()
         # distance between left attachment point of robot's carriage and tool position on x axis
         self.left_offset_x = kwargs.get('left_offset', self.area_width / 20)
         # distance between right attachment point of robot's carriage and tool position on x axis
@@ -252,11 +140,15 @@ class PolarBot:
         self.right_step = 0.0
         #
         self.curent_cmd = None
-
+        #
+        self.tick_int = controler.get_tick_interval()
         # register actions
-        self._controler.register_action('tick', self.on_tick)
-        self._controler.register_action('move_to', self.on_move_to)
+        controler.register_action('tick', self.on_tick)
+        controler.register_action('move_to', self.on_move_to)
 
+    def mm2steps(self, v):
+        return round(v * PolarBot.STEPS_PER_MM)
+        
     def calc_ropes(self, tg_point):
         # calc length of left rope
         f_llen = sqrt(((tg_point.x - self.left_offset_x) - self.left_bound_x) ** 2 + (tg_point.y - self.offset_y) ** 2)
@@ -292,16 +184,25 @@ class PolarBot:
         
     def execute(self, cmd):
         self.curent_cmd = cmd
+        self.sc_tool_position.set(*self.tool_position.xy)
+        self.tg_tool_position.set(*cmd.p.xy)
         # calc ropes lengths to reach targer tool pos
         self.tg_left_rope_len, self.tg_right_rope_len = self.calc_ropes(cmd.p)
-        # calc deltas between new lengths and current
-        ld = self.tg_left_rope_len - self.left_rope_len
-        rd = self.tg_right_rope_len - self.right_rope_len
-        # get speed in ticks to reach target point
+        # calc deltas between new lengths and current in steps
+        ld = self.mm2steps(self.tg_left_rope_len - self.left_rope_len)
+        rd = self.mm2steps(self.tg_right_rope_len - self.right_rope_len)
+        # get speed in mm/min to reach target point
         speed = cmd.f if cmd.f else PolarBot.DEFAULT_SPEED
+        # length to travel in mm
+        p_len = sqrt(pow(self.tg_tool_position.x - self.sc_tool_position.x, 2) + pow(self.tg_tool_position.y - self.sc_tool_position.y, 2))
+        # time to travel in seconds
+        p_time = p_len / speed * 60
+        # time in ticks
+        p_ticks = round(p_time / self.tick_int)
         # calc steps in each tick
-        self.left_step = ld / speed
-        self.right_step  = rd / speed
+        self.left_step = ld / p_ticks
+        self.right_step = rd / p_ticks
+        
     # EVENTS
     def on_tick(self):
         #print('tick')
@@ -311,7 +212,90 @@ class PolarBot:
     def on_move_to(self, x, y):
         print('move_to({},{})'.format(x, y))
         self.execute(Command(cmd = 'G0', x = x, y = y, f = PolarBot.DEFAULT_SPEED))
+
+class Visualiser(TK.Canvas):
+    def __init__(self, parent, width, height):
+        self.tag = 'stats'
+
+        super().__init__(parent) #, width = self.canvas_width, height = self.canvas_height)
+        self.parent = parent
+        self.width = width
+        self.height = height
+        self.bot_width = width
+        self.bot_height = height
+        self.x_scale = 1.0
+        self.y_scale = 1.0
         
+        self.configure(width = self.width, height = self.height, background = "white", borderwidth = 0)
+
+    def init(self, width, height, att_dist, offset_y):
+        # called by controler when object of this class added to controler's executioners list
+        self.bot_width = width
+        self.bot_height = height
+        # distance
+        self.bot_att_dist = att_dist
+        self.bot_offset_y = offset_y
+        # scale
+        self.x_scale = self.width / self.bot_width
+        self.y_scale = self.height / self.bot_height
+        #print(self.scale_x , self.scale_y)
+    
+    def line(self, x0, y0, x1, y1, **kwargs):
+        #print('({},{})-({},{})'.format(x0, y0, x1, y1))
+        kwargs['tag'] = self.tag 
+        self.create_line(x0, y0, x1, y1, kwargs)
+    
+    def rect(self, x0, y0, x1, y1, **kwargs):
+        kwargs['tag'] = self.tag 
+        self.create_rectangle(x0, y0, x1, y1, kwargs)
+    
+    def cross(self, x, y, size = 10, **kwargs):
+        kwargs['tag'] = self.tag 
+        # hor line
+        self.create_line(x - size // 2, y, x + size // 2, y, kwargs)
+        # vert line
+        self.create_line(x, y - size // 2, x, y + size // 2, kwargs)
+    
+    def text(self, x, y, text, **kwargs):
+        kwargs['tag'] = self.tag 
+        kwargs['text'] = text 
+        self.create_text(x, y, kwargs)
+        
+    def scale_x(self, v):
+        return round(v * self.x_scale)
+        
+    def scale_y(self, v):
+        return round(v * self.y_scale)
+    
+    def update(self, left_len, right_len):
+        # calc coordinates of carriage attachment poins
+        #print(left_len, right_len)
+        f_w = self.bot_width - self.bot_att_dist
+        f_lx = (left_len ** 2 - right_len ** 2 + f_w ** 2) / (2 * f_w)
+        f_y = sqrt(left_len ** 2 - f_lx ** 2)
+        f_rx = self.bot_width - sqrt(right_len ** 2 - f_y ** 2)
+        # calc tool position
+        f_tx = f_lx + (f_rx - f_lx) / 2
+        f_ty = f_y + self.bot_offset_y
+        # redraw
+        self.delete(self.tag)
+        # aim
+        #self.rect(self.scale_x(f_tx) - 1, self.scale_y(f_ty) - 1, self.scale_x(f_tx) + 1, self.scale_y(f_ty) + 1, outline = 'blue')
+        self.cross(self.scale_x(f_tx), self.scale_y(f_ty), fill = 'blue')
+        # left rope
+        self.line(0, 0, self.scale_x(f_lx), self.scale_y(f_y), fill = 'red')
+        # right rope
+        self.line(round(self.width), 0, self.scale_x(f_rx), self.scale_y(f_y), fill = 'red')
+        # left attach point
+        self.cross(self.scale_x(f_lx), self.scale_y(f_y), fill = 'green')
+        # right attach point
+        self.cross(self.scale_x(f_rx), self.scale_y(f_y), fill = 'green')
+        # update stats
+        self.text(self.width // 2, 10, 'tool x,y={}'.format((f_tx, f_ty)))
+    
+    def set_pen(self, state = True):
+        self._enable_pen = state
+
 class ControlPanel(TK.Frame):
     ACTIONS = ('TICK', 'MOVE_TO', 'PROG_RUN')
     TICK_INTERVAL = 1000
@@ -360,7 +344,10 @@ class ControlPanel(TK.Frame):
                 self._actions[name](*args)
             except Exception as e:
                 raise Exception('there was an exception while execute action "{}" witch params {}, becase:{}'.format(name, args, e))
-    
+                
+    def get_tick_interval(self):
+        return ControlPanel.TICK_INTERVAL
+        
     def tick(self):
         #print('--> tick()')
         self.raise_action('TICK')
