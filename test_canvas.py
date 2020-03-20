@@ -6,7 +6,8 @@ HEIGHT = 600
 
 import tkinter as TK
 from tkinter.messagebox import showinfo, showerror, showwarning
-from math import sqrt
+from math import sqrt, pi
+from time import sleep
 
 class Point:
     def __init__(self, x, y):
@@ -101,9 +102,65 @@ class Command:
                     elif pref == 'F':
                         self._arg_speed = amount
 
+class StepperPulley:
+    def __init__(self, spr, microsteps, pulley_dia):
+        # stepper 
+        self._steps_per_revolution = spr
+        self._microsteps = microsteps
+        self._pulley_diameter = pulley_dia
+        self._effective_steps = spr * microsteps
+        self._degrees_per_step = 360 / self._effective_steps
+        self._mm_per_step = (pulley_dia * pi) / self._effective_steps
+        # callback
+        self._id = None
+        self._on_step = None
+        # internal
+        self._steps_to_move = 0
+        self._ticks_to_move = 0
+        self._dir_to_move = None
+        # ## statistics
+        # current position of pulley in degrees
+        self._position_dg = 0.0
+        # traveled distance in mm
+        self._distance_mm = 0.0
+        
+    def set_driven(self, id, on_step_func):
+        self._id = id
+        self._on_step = on_step_func
+    
+    def begin_move(self, len_mm):
+        # begin pulley rotation
+        self._steps_to_move = round(abs(len_mm) / self._mm_per_step)
+        #print('id={}, s2m={}'.format(self._id, self._steps_to_move))
+        if len_mm > 0:
+            self._dir_to_move = 1
+        elif len_mm < 0:
+            self._dir_to_move = -1
+        else:
+            self._dir_to_move = None
+            self._steps_to_move = 0
+            
+    def tick(self):
+        # system tick
+        if self._steps_to_move > 0:
+            #TODO add condition
+            self._step()
+    
+    def _step(self):
+        # make one step in direction (-1 or +1)
+        if self._on_step:
+            self._on_step(self._id, self._mm_per_step * self._dir_to_move)
+        #
+        self._steps_to_move -= 1
+        #print('id={}, s2m={}'.format(self._id, self._steps_to_move))
+        # stats
+        self._position_dg += self._degrees_per_step * self._dir_to_move
+        self._distance_mm += self._mm_per_step
+        
 class PolarBot:
     DEFAULT_SPEED = 100
-    STEPS_PER_MM = 200
+    # STEPS_PER_MM = 200
+    # MM_PER_STEP = 200 * 16
     
     def __init__(self, controler, **kwargs):
         self._executor = []
@@ -142,6 +199,11 @@ class PolarBot:
         self.curent_cmd = None
         #
         self.tick_int = controler.get_tick_interval()
+        # create stepper pulleys and initialize events
+        self.left_pulley = StepperPulley(200, 16, 10)
+        self.left_pulley.set_driven(0, self.on_left_step)
+        self.right_pulley = StepperPulley(200, 16, 10)
+        self.right_pulley.set_driven(1, self.on_right_step)
         # register actions
         controler.register_action('tick', self.on_tick)
         controler.register_action('move_to', self.on_move_to)
@@ -188,27 +250,28 @@ class PolarBot:
         self.tg_tool_position.set(*cmd.p.xy)
         # calc ropes lengths to reach targer tool pos
         self.tg_left_rope_len, self.tg_right_rope_len = self.calc_ropes(cmd.p)
-        # calc deltas between new lengths and current in steps
-        ld = self.mm2steps(self.tg_left_rope_len - self.left_rope_len)
-        rd = self.mm2steps(self.tg_right_rope_len - self.right_rope_len)
-        # get speed in mm/min to reach target point
-        speed = cmd.f if cmd.f else PolarBot.DEFAULT_SPEED
-        # length to travel in mm
-        p_len = sqrt(pow(self.tg_tool_position.x - self.sc_tool_position.x, 2) + pow(self.tg_tool_position.y - self.sc_tool_position.y, 2))
-        # time to travel in seconds
-        p_time = p_len / speed * 60
-        # time in ticks
-        p_ticks = round(p_time / self.tick_int)
-        # calc steps in each tick
-        self.left_step = ld / p_ticks
-        self.right_step = rd / p_ticks
+        # calc deltas between new lengths and current
+        ldelta = self.tg_left_rope_len - self.left_rope_len
+        rdelta = self.tg_right_rope_len - self.right_rope_len
+        # start pylleys moving
+        self.left_pulley.begin_move(-ldelta)
+        self.right_pulley.begin_move(rdelta)
         
     # EVENTS
+    def on_left_step(self, id, len):
+        self.left_rope_len += -len
+        self.update()
+        
+    def on_right_step(self, id, len):
+        self.right_rope_len += len
+        self.update()
+        
     def on_tick(self):
         #print('tick')
         if self.curent_cmd:
-            pass
-        
+            self.left_pulley.tick()
+            self.right_pulley.tick()   
+            
     def on_move_to(self, x, y):
         print('move_to({},{})'.format(x, y))
         self.execute(Command(cmd = 'G0', x = x, y = y, f = PolarBot.DEFAULT_SPEED))
@@ -292,13 +355,16 @@ class Visualiser(TK.Canvas):
         self.cross(self.scale_x(f_rx), self.scale_y(f_y), fill = 'green')
         # update stats
         self.text(self.width // 2, 10, 'tool x,y={}'.format((f_tx, f_ty)))
+        self.text(self.width // 2, 20, 'left l={} x,y={}'.format(left_len, (f_lx, f_y)))
+        self.text(self.width // 2, 30, 'right l={} x,y={}'.format(right_len, (f_rx, f_y)))
     
     def set_pen(self, state = True):
         self._enable_pen = state
 
 class ControlPanel(TK.Frame):
     ACTIONS = ('TICK', 'MOVE_TO', 'PROG_RUN')
-    TICK_INTERVAL = 1000
+    TICK_INTERVAL = 1
+    
     def __init__(self, parent, **kwargs):
         super().__init__(parent) #, width = self.canvas_width, height = self.canvas_height)
         self.parent = parent
@@ -378,8 +444,11 @@ if __name__ == '__main__':
     vis.grid(row = 1, column = 1)
     cp.grid(row = 1, column = 2, sticky = TK.W + TK.E + TK.N + TK.S)
     # man bot controler
-    pb = PolarBot(cp, width = 1000, height = 2000)
+    pb = PolarBot(cp, width = 800, height = 600)
     # add visualiser as executor
     pb.add_executor(vis)
     # enter main loop
     root.mainloop()
+    # while True:
+        # root.update()
+        # sleep(0.001)
