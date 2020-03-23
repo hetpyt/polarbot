@@ -276,7 +276,7 @@ class PolarBot:
         self.slave_pulley = self.left_pulley if lsteps < rsteps else self.right_pulley
         # error
         self.error = self.master_pulley.get_steps() / 2
-        print('act pos cmd={}'.format(self.curent_cmd))
+        #print('act pos cmd={}'.format(self.curent_cmd))
         
     def run_cmd(self, cmd):
         self.curent_cmd = cmd
@@ -320,8 +320,8 @@ class PolarBot:
             if self.error < 0:
                 rem_slave_steps = self.slave_pulley.step()
                 self.error += self.master_pulley.get_steps()
-                print('ss={}'.format(rem_slave_steps))
-            print('ms={}'.format(rem_master_steps))
+                #print('ss={}'.format(rem_slave_steps))
+            #print('ms={}'.format(rem_master_steps))
             if rem_master_steps == 0:
                 self.seg_count -= 1
                 if self.seg_count > 0:
@@ -347,6 +347,7 @@ class PolarBot:
     
     def on_clear(self):
         self._execute('clear', ())
+        self._execute('update', (self.left_rope_len, self.right_rope_len, True))
     
 class Visualiser(TK.Canvas):
     def __init__(self, parent, width, height):
@@ -407,7 +408,8 @@ class Visualiser(TK.Canvas):
     def scale_y(self, v):
         return round(v * self.y_scale)
     
-    def update(self, left_len, right_len):
+    def update(self, left_len, right_len, force_redraw = False):
+        print('update')
         # calc coordinates of carriage attachment poins
         #print(left_len, right_len)
         f_w = self.bot_width - self.bot_att_dist
@@ -426,30 +428,30 @@ class Visualiser(TK.Canvas):
         self.text(self.width // 2, 20, 'left l={} x,y={}'.format(left_len, (f_lx, f_y)))
         self.text(self.width // 2, 30, 'right l={} x,y={}'.format(right_len, (f_rx, f_y)))
         
-        if tool_x == self._last_tool_p.x and tool_y == self._last_tool_p.y:
-            # no need to redraw
-            return
-        # redraw
-        self.delete(self.tag)
-        # aim
-        #self.rect(tool_x - 1, tool_y - 1, tool_x + 1, tool_y + 1, outline = 'blue')
-        self.cross(tool_x, tool_y, fill = 'blue')
-        # left rope
-        self.line(0, 0, self.scale_x(f_lx), self.scale_y(f_y), fill = 'red')
-        # right rope
-        self.line(round(self.width), 0, self.scale_x(f_rx), self.scale_y(f_y), fill = 'red')
-        # left attach point
-        self.cross(self.scale_x(f_lx), self.scale_y(f_y), fill = 'green')
-        # right attach point
-        self.cross(self.scale_x(f_rx), self.scale_y(f_y), fill = 'green')
-    
-        # draw tool path
-        if self._enable_tool:
-            self.create_line(self._last_tool_p.x, self._last_tool_p.y, tool_x, tool_y, fill = 'gray')#, tag = self.path_tag)
-        self._last_tool_p.set(tool_x, tool_y) 
+        if tool_x != self._last_tool_p.x or tool_y != self._last_tool_p.y or force_redraw:
+            # redraw
+            self.delete(self.tag)
+            # aim
+            #self.rect(tool_x - 1, tool_y - 1, tool_x + 1, tool_y + 1, outline = 'blue')
+            self.cross(tool_x, tool_y, fill = 'blue')
+            # left rope
+            self.line(0, 0, self.scale_x(f_lx), self.scale_y(f_y), fill = 'red')
+            # right rope
+            self.line(round(self.width), 0, self.scale_x(f_rx), self.scale_y(f_y), fill = 'red')
+            # left attach point
+            self.cross(self.scale_x(f_lx), self.scale_y(f_y), fill = 'green')
+            # right attach point
+            self.cross(self.scale_x(f_rx), self.scale_y(f_y), fill = 'green')
+        
+            # draw tool path
+            if self._enable_tool:
+                self.create_line(self._last_tool_p.x, self._last_tool_p.y, tool_x, tool_y, fill = 'gray')#, tag = self.path_tag)
+            self._last_tool_p.set(tool_x, tool_y) 
     
     def clear(self):
-        self.delete(self.path_tag)
+        #self.delete(self.path_tag)
+        print('clear')
+        self.delete(*self.find_all())
         
     def set_tool(self, state = True):
         self._enable_tool = state
