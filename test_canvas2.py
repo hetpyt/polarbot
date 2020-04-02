@@ -138,7 +138,7 @@ class StepperPulley:
         else:
             self._dir_to_move = 0
             self._steps_to_move = 0
-
+        #print('set rotation id={}, s={}, d={}'.format(self._id, self._steps_to_move, self._dir_to_move))
         return self._steps_to_move
     
     def step(self):
@@ -159,7 +159,7 @@ class PolarBot:
     STEPS_PER_REV = 200
     MICROSTEP = 16
     PULLEY_DIA_MM = 10
-    MAX_SEG_LEN_MM = 1
+    MAX_SEG_LEN_MM = 5
     
     def __init__(self, controler, **kwargs):
         self._executor = []
@@ -167,7 +167,7 @@ class PolarBot:
         self.area_width = kwargs.get('width', 800)
         self.area_height = kwargs.get('height', 600) 
         #
-        self.mount_point = Point(self.area_width / 2, 0)
+        self.mount_point = Point(self.area_width / 2, 100)
         #
         self.armA_len = self.area_width / 4
         self.armB_len = self.armA_len
@@ -178,11 +178,11 @@ class PolarBot:
         self.armA_angle = pi / 2
         self.tg_armA_angle = None
         # angle in radians between arm B and arm A
-        self.armB_angle = pi / 2
+        self.armB_angle = 2 * pi - pi / 2
         self.tg_armB_angle = None
         
         # position of robot's tool (pen)
-        self.tool_position = Point(self.mount_point.x - self.armA_len, self.armA_len)
+        self.tool_position = Point(self.mount_point.x - self.armA_len, self.mount_point.y + self.armA_len)
         # calculated tool pos
         self.calc_tool_position = self.tool_position.copy()
         # target tool position
@@ -228,25 +228,36 @@ class PolarBot:
             except Exception as e:
                 print(e)
     
-    def actuate_pos(self):
-        print('tp={}'.format(self.tool_position))
+    def calc_target_angles(self):
+        #print('tp={}'.format(self.tool_position))
         # calc distance between tool position and mount point
         dx = self.tool_position.x - self.mount_point.x
         dy = self.tool_position.y - self.mount_point.y
         sqr_tool_dist = dx ** 2 + dy ** 2
         self.tool_dist = sqrt(sqr_tool_dist)
-        print('dx,dy = {}'.format((dx, dy)))
-        print('tool dist = {}'.format(self.tool_dist))
+        #print('dx,dy = {}'.format((dx, dy)))
+        #print('tool dist = {}'.format(self.tool_dist))
         # calc armB_angle
         cos_beta = (self.sqr_arm_len + self.sqr_arm_len - sqr_tool_dist) / (2 * self.sqr_arm_len)
-        print('cos beta = {}'.format(cos_beta))
+        #print('cos beta = {}'.format(cos_beta))
         beta = acos(cos_beta)
         self.tg_armB_angle = 2 * pi - beta
         # calc armA_angle
-        self.tg_armA_angle = pi - (acos(abs(self.tool_position.x - self.mount_point.x) / self.tool_dist) + ((pi - beta) / 2))
+        # calc other two angles in isosceles triangle
+        base_angle = (pi - beta) / 2
+        # calc straight angle of tool path line
+        alpha = acos(abs(self.tool_position.x - self.mount_point.x) / self.tool_dist)
+        if self.tool_position.x <= self.mount_point.x:
+            self.tg_armA_angle = pi - (alpha + base_angle)
+        else:
+            self.tg_armA_angle = alpha - base_angle
+            
+    def actuate_pos(self):
+        self.calc_target_angles()
         # deltas
         da = self.tg_armA_angle - self.armA_angle
         db = self.tg_armB_angle - self.armB_angle
+        #print('tgab={}, ab={}'.format((round(self.tg_armA_angle, 5), round(self.tg_armB_angle, 5)),(round(self.armA_angle, 5), round(self.armB_angle, 5))))
         #
         stepsA = self.pulleyA.set_rotation(da)
         stepsB = self.pulleyB.set_rotation(db)
@@ -259,10 +270,19 @@ class PolarBot:
         
     def check_bounds(self, x, y):
         return ((x - self.mount_point.x) ** 2 + (y - self.mount_point.y) ** 2 <= self.sqr_max_tool_dist)
+    
+    def move_to(self, x, y):
+        if not self.check_bounds(x, y):
+            print('move fail: out of bounds')
+        self.tool_position.x = x
+        self.tool_position.y = y
+        self.calc_target_angles()
+        self.armA_angle, self.armB_angle = self.tg_armA_angle, self.tg_armB_angle
+        self.update()
         
     def run_cmd(self, cmd):
         self.curent_cmd = cmd
-        print('run_cmd={}'.format(self.curent_cmd.p.xy))
+        #print('run_cmd={}'.format(self.curent_cmd.p.xy))
         if not self.check_bounds(*self.curent_cmd.p.xy):
             print('cmd fail: out of bounds')
             cb = self.curent_cmd.callback
@@ -284,7 +304,7 @@ class PolarBot:
             self.seg_count += 1
         self.dx = dx / self.seg_count
         self.dy = dy / self.seg_count
-        print('sg={}, dx,dy={}'.format(self.seg_count, (self.dx, self.dy)))
+        #print('sg={}, dx,dy={}'.format(self.seg_count, (self.dx, self.dy)))
         # set tool of executors
         self._execute('set_tool', (cmd.tool_state(),))
         # run first segment
@@ -316,14 +336,14 @@ class PolarBot:
             self.update()
             if rem_master_steps == 0:
                 self.seg_count -= 1
-                print(self.seg_count)
+                #print('seg left={}'.format(self.seg_count))
                 if self.seg_count > 0:
                     self.tool_position.x += self.dx
                     self.tool_position.y += self.dy
                     self.actuate_pos()
                 else:
                     # all done
-                    print('on_tick@done')
+                    #print('on_tick@done')
                     cb = self.curent_cmd.callback
                     del(self.curent_cmd)
                     self.curent_cmd = None
@@ -331,11 +351,12 @@ class PolarBot:
                         cb(True)
             
     def on_move_to(self, x, y, callback):
-        print('move_to({},{})'.format(x, y))
+        #print('move_to({},{})'.format(x, y))
         self.run_cmd(Command(cmd = 'G1', x = x, y = y, callback = callback))
+        #self.move_to(x, y)
     
     def on_run_cmd(self, text, callback):
-        print('run_cmd({})'.format(text))
+        #print('run_cmd({})'.format(text))
         self.run_cmd(Command(cmd_text = text, callback = callback))
     
     def on_clear(self):
@@ -343,10 +364,12 @@ class PolarBot:
         self._execute('update', (self.left_rope_len, self.right_rope_len, True))
     
 class Visualiser(TK.Canvas):
+    GRID_STEP = 100
     def __init__(self, parent, width, height):
         self.tag = 'draws'
         self.stats_tag = 'stats'
         self.path_tag = 'tool_path'
+        self.grid_tag = 'grid'
         
         super().__init__(parent) #, width = self.canvas_width, height = self.canvas_height)
         self.parent = parent
@@ -374,6 +397,15 @@ class Visualiser(TK.Canvas):
         self.x_scale = self.width / self.bot_width
         self.y_scale = self.height / self.bot_height
         #print(self.scale_x , self.scale_y)
+        # draw grid
+        x = 0
+        while x < self.width:
+            y = 0
+            while y < self.height:
+                self.cross(x, y, 15, fill='gray', tag = self.grid_tag)
+                y += Visualiser.GRID_STEP
+            x += Visualiser.GRID_STEP
+
     
     def line(self, x0, y0, x1, y1, **kwargs):
         #print('({},{})-({},{})'.format(x0, y0, x1, y1))
@@ -385,7 +417,8 @@ class Visualiser(TK.Canvas):
         self.create_rectangle(x0, y0, x1, y1, kwargs)
     
     def cross(self, x, y, size = 10, **kwargs):
-        kwargs['tag'] = self.tag 
+        if not 'tag' in kwargs:
+            kwargs['tag'] = self.tag 
         # hor line
         self.create_line(x - size // 2, y, x + size // 2, y, kwargs)
         # vert line
@@ -404,15 +437,22 @@ class Visualiser(TK.Canvas):
     
     def update(self, angleA, angleB, force_redraw = False):
         #print('update')
+        signa = 1 if angleA >= 0 else -1
         # calc point of junction armA and armB
         dx1 = self.bot_armA_len * cos(angleA)
-        dy1 = sqrt(self.bot_armA_len ** 2 - dx1 ** 2)
+        dy1 = sqrt(self.bot_armA_len ** 2 - dx1 ** 2) * signa
         x1 = self.bot_mount_point.x + dx1 
-        y1 = self.bot_mount_point.y + dy1 
+        y1 = self.bot_mount_point.y + dy1
         # calc tool position
-        dy2 = self.bot_armB_len * cos(pi - (2 * pi - angleB) - (pi - angleA - pi / 2))
+        if angleA >=0:
+            beta = pi - (2 * pi - angleB) - (pi - abs(angleA) - pi / 2)
+        else:
+            beta = pi - (2 * pi - angleB) - abs(angleA) - pi / 2
+        signbeta = 1 if beta >= 0 else -1
+        #print('beta={}'.format(beta))
+        dy2 = self.bot_armB_len * cos(beta)
         dx2 = sqrt(self.bot_armB_len ** 2 - dy2 ** 2)
-        f_tx = x1 - dx2
+        f_tx = x1 - (dx2 * signbeta)
         f_ty = y1 + dy2
         # tool coord in scale
         tool_x = self.scale_x(f_tx)
@@ -421,7 +461,7 @@ class Visualiser(TK.Canvas):
         self.delete(self.stats_tag)
         self.text(self.width // 2, 10, 'tool x,y={}'.format((f_tx, f_ty)))
         self.text(self.width // 2, 20, 'x1,y1={}'.format((x1, y1)))
-        self.text(self.width // 2, 30, 'a,b={}'.format((angleA, angleB)))
+        self.text(self.width // 2, 30, 'a,b={}'.format((round(angleA, 5), round(angleB, 5))))
         
         if tool_x != self._last_tool_p.x or tool_y != self._last_tool_p.y or force_redraw:
             # redraw
@@ -430,9 +470,9 @@ class Visualiser(TK.Canvas):
             #self.rect(tool_x - 1, tool_y - 1, tool_x + 1, tool_y + 1, outline = 'blue')
             self.cross(tool_x, tool_y, fill = 'blue')
             # armA
-            self.line(self.bot_mount_point.x, self.bot_mount_point.y, self.scale_x(x1), self.scale_y(y1), fill = 'red')
+            self.line(self.scale_x(self.bot_mount_point.x), self.scale_x(self.bot_mount_point.y), self.scale_x(x1), self.scale_y(y1), fill = 'red')
             # armB
-            self.line(self.scale_x(x1), self.scale_y(y1), self.scale_x(f_tx), self.scale_y(f_ty), fill = 'red')
+            self.line(self.scale_x(x1), self.scale_y(y1), tool_x, tool_y, fill = 'red')
         
             # draw tool path
             if self._enable_tool:
@@ -449,7 +489,7 @@ class Visualiser(TK.Canvas):
 
 class ControlPanel(TK.Frame):
     ACTIONS = ('TICK', 'MOVE_TO', 'RUN_CMD', 'CLEAR')
-    TICK_INTERVAL = 5
+    TICK_INTERVAL = 10
     
     def __init__(self, parent, **kwargs):
         super().__init__(parent) #, width = self.canvas_width, height = self.canvas_height)
@@ -461,8 +501,10 @@ class ControlPanel(TK.Frame):
         #self.configure(width = self.width, height = self.height)
         #self.pack() #ipadx = 10, ipady = 10) 
         #
+        self.script_running = False
+        self.cmd_running = False
         self.program_line = 0
-        self.program_text = None
+        self.program_text_iter = None
         # create controls
         self.lb_x = TK.Label(self, text = 'GO TO X')
         self.lb_x.grid(row = 0, column = 0)
@@ -511,15 +553,19 @@ class ControlPanel(TK.Frame):
     def next_cmd(self):
         self.program_line += 1
         try:
-            text = next(self.program_text)
-            print('cmd #{} {}'.format(self.program_line, text))
+            text = next(self.program_text_iter)
             if text:
+                print('cmd #{} {}'.format(self.program_line, text))
+                self.cmd_running = True
                 self.raise_action('RUN_CMD', text, self.on_cmd_done)
         except StopIteration as e:
             self.program_line = 0
+            self.script_running = False
             
     def tick(self):
         #print('--> tick()')
+        if self.script_running and not self.cmd_running:
+            self.next_cmd()
         self.raise_action('TICK')
         self.after(self.tick_interval, self.tick)
         #print('<-- tick()')
@@ -537,16 +583,18 @@ class ControlPanel(TK.Frame):
             self.raise_action('MOVE_TO', x, y, self.on_move_done)
             
     def btnRun_on_click(self, event):
-        self.program_text = iter(self.txt_prog.get(1.0, TK.END).split('\n'))
+        self.program_text_iter = iter(self.txt_prog.get(1.0, TK.END).split('\n'))
         self.program_line = 0
-        self.next_cmd()
+        #self.next_cmd()
+        self.script_running = True
         
     def btnClear_on_click(self, event):
         self.raise_action('CLEAR')
     
     def on_cmd_done(self, result):
         print('cmd done={}'.format(result))
-        self.next_cmd()
+        #self.next_cmd()
+        self.cmd_running = False
     
     def on_move_done(self, result):
         print('move done={}'.format(result))
