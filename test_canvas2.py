@@ -8,7 +8,10 @@ import tkinter as TK
 from tkinter.messagebox import showinfo, showerror, showwarning
 from math import sqrt, pi, cos, acos
 from time import sleep
-
+print('import >>>')
+from event_dispatcher import EventDispatcher as dispatcher
+print('import <<<')
+    
 class Point:
     def __init__(self, x, y):
         self.set(x, y)
@@ -198,10 +201,12 @@ class PolarBot:
         self.pulleyB = StepperPulley('B', PolarBot.STEPS_PER_REV, PolarBot.MICROSTEP, self.on_b_step)
         # register actions
         controler.register_action('tick', self.on_tick)
-        controler.register_action('move_to', self.on_move_to)
+        #controler.register_action('move_to', self.on_move_to)
         controler.register_action('run_cmd', self.on_run_cmd)
         controler.register_action('clear', self.on_clear)
-
+        # events
+        dispatcher.go_coordinates += self.on_move_to
+        
     def update(self):
         # update executioners
         self._execute('update', (self.armA_angle, self.armB_angle))
@@ -361,7 +366,7 @@ class PolarBot:
     
     def on_clear(self):
         self._execute('clear', ())
-        self._execute('update', (self.left_rope_len, self.right_rope_len, True))
+        self._execute('update', (self.armA_angle, self.armB_angle, True))
     
 class Visualiser(TK.Canvas):
     GRID_STEP = 100
@@ -384,6 +389,11 @@ class Visualiser(TK.Canvas):
         self._enable_tool = False
         
         self.configure(width = self.width, height = self.height, background = "white", borderwidth = 0)
+        #
+        self.bind('<Button-1>', self.on_click)
+        print(dispatcher)
+        print(type(dispatcher))
+        dispatcher.add_event('on_click')
 
     def init(self, width, height, mount_point, arm_len):
         # called by controler when object of this class added to controler's executioners list
@@ -487,6 +497,10 @@ class Visualiser(TK.Canvas):
     def set_tool(self, state = True):
         self._enable_tool = state
 
+    def on_click(self, event):
+        print(event)
+        dispatcher.trigger_event('on_click', x = event.x, y = event.y)
+
 class ControlPanel(TK.Frame):
     ACTIONS = ('TICK', 'MOVE_TO', 'RUN_CMD', 'CLEAR')
     TICK_INTERVAL = 10
@@ -528,6 +542,9 @@ class ControlPanel(TK.Frame):
         self.ed_x.bind('<Key>', self.edXY_on_key_enter)
         self.btn_run.bind('<Button-1>', self.btnRun_on_click)
         self.btn_clear.bind('<Button-1>', self.btnClear_on_click)
+        # events
+        dispatcher.add_event('go_coordinates')
+        dispatcher.on_click += self.on_mouse1_click
         # start ticking
         self.after(self.tick_interval, self.tick)
 
@@ -568,6 +585,7 @@ class ControlPanel(TK.Frame):
             self.next_cmd()
         self.raise_action('TICK')
         self.after(self.tick_interval, self.tick)
+        dispatcher.dispatch()
         #print('<-- tick()')
 
     def edXY_on_key_enter(self, event):
@@ -580,7 +598,8 @@ class ControlPanel(TK.Frame):
             except Exception as e:
                 showerror(message = 'invalid symbols in edit fields for X and Y')
                 return
-            self.raise_action('MOVE_TO', x, y, self.on_move_done)
+            #self.raise_action('MOVE_TO', x, y, self.on_move_done)
+            dispatcher.trigger_event('go_coordinates', x, y, self.on_move_done)
             
     def btnRun_on_click(self, event):
         self.program_text_iter = iter(self.txt_prog.get(1.0, TK.END).split('\n'))
@@ -599,8 +618,11 @@ class ControlPanel(TK.Frame):
     def on_move_done(self, result):
         print('move done={}'.format(result))
         
+    def on_mouse1_click(self, *args, **kwargs):
+        print('x,y={}'.format((kwargs['x'],kwargs['y'])))
     
 if __name__ == '__main__':
+    print('__main__')
     # main window
     root = TK.Tk()
     # bot visualiser
