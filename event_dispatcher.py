@@ -16,6 +16,7 @@ class EventHandler:
         self._handlers = []
         
     def __iadd__(self, handler):
+        print(f'add,{handler}')
         self._handlers.append(handler)
         return self
         
@@ -53,14 +54,16 @@ class EventDispatcher(metaclass = MetaEventDispatcher):
         self.__dict__['_queue'] = []
         
     def __getattr__(self, name):
-        if name in self._events:
-            return self._events[name]
-        else:
-            raise AttributeError('Event "{}" not found'.format(name))
+        print(f'getattr,{name}')
+        if name not in self.__dict__['_events']:
+            #self.__dict__['_events'][name] = EventHandler()
+            self._events[name] = EventHandler()
+        return self.__dict__['_events'][name]
             
     def __setattr__(self, name, value):
-        if name not in self._events:
-            self._events[event_name] = EventHandler()
+        print(f'setattr,{name},{value}')
+        if name not in self.__dict__['_events']:
+            self.__dict__['_events'][name] = EventHandler()
         super().__setattr__(name, value)
     
     @classmethod

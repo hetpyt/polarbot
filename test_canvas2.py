@@ -8,9 +8,7 @@ import tkinter as TK
 from tkinter.messagebox import showinfo, showerror, showwarning
 from math import sqrt, pi, cos, acos
 from time import sleep
-print('import >>>')
 from event_dispatcher import EventDispatcher as dispatcher
-print('import <<<')
     
 class Point:
     def __init__(self, x, y):
@@ -114,7 +112,8 @@ class Command:
                         self._arg_speed = amount
 
 class StepperPulley:
-    def __init__(self, id, spr, microsteps, on_step_func):
+    def __init__(self, id, spr, microsteps): #, on_step_func):
+        
         # stepper 
         self._steps_per_revolution = spr
         self._microsteps = microsteps
@@ -122,10 +121,11 @@ class StepperPulley:
         self._rads_per_step = (2 * pi) / self._effective_steps
         # callback
         self._id = id
-        self._on_step = on_step_func
+        #self._on_step = on_step_func
         # internal
         self._steps_to_move = 0
         self._dir_to_move = 0
+        dispatcher.add_event('step')
     
     def get_steps(self):
         return self._steps_to_move
@@ -151,8 +151,9 @@ class StepperPulley:
         else:
             # make one step in direction (-1 or +1)
             self._steps_to_move -= 1
-            if self._on_step:
-                self._on_step(self._id, self._rads_per_step * self._dir_to_move)
+            #if self._on_step:
+            #    self._on_step(self._id, self._rads_per_step * self._dir_to_move)
+            dispatcher.trigger_event('step', self._id, self._rads_per_step * self._dir_to_move)
             #print('id={}, s2m={}'.format(self._id, self._steps_to_move))
         
         return self._steps_to_move
@@ -197,14 +198,19 @@ class PolarBot:
         #
         self.tick_int = controler.get_tick_interval()
         # create stepper pulleys and initialize events
-        self.pulleyA = StepperPulley('A', PolarBot.STEPS_PER_REV, PolarBot.MICROSTEP, self.on_a_step)
-        self.pulleyB = StepperPulley('B', PolarBot.STEPS_PER_REV, PolarBot.MICROSTEP, self.on_b_step)
+        print('===>>')
+        dispatcher.step = self.on_stepper_step
+        print(dispatcher.step)
+        print('<<===')
+        self.pulleyA = StepperPulley('A', PolarBot.STEPS_PER_REV, PolarBot.MICROSTEP) #, self.on_a_step)
+        self.pulleyB = StepperPulley('B', PolarBot.STEPS_PER_REV, PolarBot.MICROSTEP) #, self.on_b_step)
         # register actions
         controler.register_action('tick', self.on_tick)
         #controler.register_action('move_to', self.on_move_to)
         controler.register_action('run_cmd', self.on_run_cmd)
         controler.register_action('clear', self.on_clear)
         # events
+        #dispatcher.step += self.on_stepper_step
         dispatcher.go_coordinates += self.on_move_to
         
     def update(self):
@@ -318,13 +324,19 @@ class PolarBot:
         self.actuate_pos()
         
     # EVENTS
-    def on_a_step(self, id, angle):
-        self.armA_angle += angle
-        #self.update()
+    def on_stepper_step(self, id, angle):
+        if id == 'A':
+            self.armA_angle += angle
+        else:
+            self.armB_angle += angle
         
-    def on_b_step(self, id, angle):
-        self.armB_angle += angle
-        #self.update()
+    # def on_a_step(self, id, angle):
+        # self.armA_angle += angle
+        # #self.update()
+        
+    # def on_b_step(self, id, angle):
+        # self.armB_angle += angle
+        # #self.update()
         
     def on_tick(self):
         #print(self.curent_cmd)
